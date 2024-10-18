@@ -53,10 +53,10 @@ def run_queries_and_save_to_json(queries, rag_instance, query_param, output_file
 if __name__ == "__main__":
     cls = "agriculture"
     mode = "hybrid"
-    WORKING_DIR = "../{cls}"
+    WORKING_DIR = f"../{cls}"
 
     rag = LightRAG(working_dir=WORKING_DIR)
     query_param = QueryParam(mode=mode)
 
     queries = extract_queries(f"../datasets/questions/{cls}_questions.txt")
-    run_queries_and_save_to_json(queries, rag, query_param, "result.json", "errors.json")
+    run_queries_and_save_to_json(queries, rag, query_param, f"{cls}_result.json", f"{cls}_errors.json")
