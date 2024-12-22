@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import logging
 import argparse
 from lightrag import LightRAG, QueryParam
-from lightrag.llm import ollama_model_complete, ollama_embedding
+from lightrag.llm import ollama_model_complete, ollama_embed
 from lightrag.utils import EmbeddingFunc
 from typing import Optional, List
 from enum import Enum
@@ -179,7 +179,7 @@ def create_app(args):
         embedding_func=EmbeddingFunc(
             embedding_dim=args.embedding_dim,
             max_token_size=args.max_embed_tokens,
-            func=lambda texts: ollama_embedding(
+            func=lambda texts: ollama_embed(
                 texts, embed_model=args.embedding_model, host=args.ollama_host
             ),
         ),
