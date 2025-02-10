@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { useDebounce } from '@/hooks/useDebounce'
 
 import { cn } from '@/lib/utils'
+import Button from '@/components/ui/Button'
 import {
   Command,
   CommandEmpty,
@@ -11,6 +12,7 @@ import {
   CommandItem,
   CommandList
 } from '@/components/ui/Command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/Popover'
 
 export interface Option {
   value: string
@@ -31,30 +33,34 @@ export interface AsyncSelectProps<T> {
   renderOption: (option: T) => React.ReactNode
   /** Function to get the value from an option */
   getOptionValue: (option: T) => string
+  /** Function to get the display value for the selected option */
+  getDisplayValue: (option: T) => React.ReactNode
   /** Custom not found message */
   notFound?: React.ReactNode
   /** Custom loading skeleton */
   loadingSkeleton?: React.ReactNode
   /** Currently selected value */
-  value: string | null
+  value: string
   /** Callback when selection changes */
   onChange: (value: string) => void
-  /** Callback when focus changes */
-  onFocus: (value: string) => void
   /** Label for the select field */
   label: string
   /** Placeholder text when no selection */
   placeholder?: string
   /** Disable the entire select */
   disabled?: boolean
-  /** Custom width for the popover */
+  /** Custom width for the popover *
   width?: string | number
   /** Custom class names */
   className?: string
   /** Custom trigger button class names */
   triggerClassName?: string
+  /** Custom search input class names */
+  searchInputClassName?: string
   /** Custom no results message */
   noResultsMessage?: string
+  /** Custom trigger tooltip */
+  triggerTooltip?: string
   /** Allow clearing the selection */
   clearable?: boolean
 }
@@ -65,16 +71,20 @@ export function AsyncSelect<T>({
   filterFn,
   renderOption,
   getOptionValue,
+  getDisplayValue,
   notFound,
   loadingSkeleton,
   label,
   placeholder = 'Select...',
   value,
   onChange,
-  onFocus,
   disabled = false,
   className,
-  noResultsMessage
+  triggerClassName,
+  searchInputClassName,
+  noResultsMessage,
+  triggerTooltip,
+  clearable = true
 }: AsyncSelectProps<T>) {
   const [mounted, setMounted] = useState(false)
   const [open, setOpen] = useState(false)
@@ -82,7 +92,7 @@ export function AsyncSelect<T>({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedValue, setSelectedValue] = useState(value)
-  const [focusedValue, setFocusedValue] = useState<string | null>(null)
+  const [selectedOption, setSelectedOption] = useState<T | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearchTerm = useDebounce(searchTerm, preload ? 0 : 150)
   const [originalOptions, setOriginalOptions] = useState<T[]>([])
@@ -92,6 +102,16 @@ export function AsyncSelect<T>({
     setSelectedValue(value)
   }, [value])
 
+  // Initialize selectedOption when options are loaded and value exists
+  useEffect(() => {
+    if (value && options.length > 0) {
+      const option = options.find((opt) => getOptionValue(opt) === value)
+      if (option) {
+        setSelectedOption(option)
+      }
+    }
+  }, [value, options, getOptionValue])
+
   // Effect for initial fetch
   useEffect(() => {
     const initializeOptions = async () => {
@@ -99,7 +119,7 @@ export function AsyncSelect<T>({
         setLoading(true)
         setError(null)
         // If we have a value, use it for the initial search
-        const data = value !== null ? await fetcher(value) : []
+        const data = await fetcher(value)
         setOriginalOptions(data)
         setOptions(data)
       } catch (err) {
@@ -149,75 +169,85 @@ export function AsyncSelect<T>({
 
   const handleSelect = useCallback(
     (currentValue: string) => {
-      console.log('handleSelect')
-      if (currentValue !== selectedValue) {
-        setSelectedValue(currentValue)
-        onChange(currentValue)
-      }
+      const newValue = clearable && currentValue === selectedValue ? '' : currentValue
+      setSelectedValue(newValue)
+      setSelectedOption(options.find((option) => getOptionValue(option) === newValue) || null)
+      onChange(newValue)
       setOpen(false)
     },
-    [selectedValue, onChange]
-  )
-
-  const handleFocus = useCallback(
-    (currentValue: string) => {
-      if (currentValue !== focusedValue) {
-        setFocusedValue(currentValue)
-        onFocus(currentValue)
-      }
-    },
-    [focusedValue, onFocus]
+    [selectedValue, onChange, clearable, options, getOptionValue]
   )
 
   return (
-    <div
-      className={cn(disabled && 'cursor-not-allowed opacity-50', className)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
-    >
-      <Command shouldFilter={false} className="bg-transparent">
-        <div className="relative w-full">
-          <CommandInput
-            placeholder={placeholder}
-            value={searchTerm}
-            onValueChange={(value) => {
-              setSearchTerm(value)
-              if (value && !open) setOpen(true)
-            }}
-          />
-          {loading && options.length > 0 && (
-            <div className="absolute top-1/2 right-2 flex -translate-y-1/2 transform items-center">
-              <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            'justify-between',
+            disabled && 'cursor-not-allowed opacity-50',
+            triggerClassName
           )}
-        </div>
-        <CommandList className="max-h-auto" hidden={!open || debouncedSearchTerm.length === 0}>
-          {error && <div className="text-destructive p-4 text-center">{error}</div>}
-          {loading && options.length === 0 && (loadingSkeleton || <DefaultLoadingSkeleton />)}
-          {!loading &&
-            !error &&
-            options.length === 0 &&
-            (notFound || (
-              <CommandEmpty>{noResultsMessage ?? `No ${label.toLowerCase()} found.`}</CommandEmpty>
-            ))}
-          <CommandGroup>
-            {options.map((option, idx) => (
-              <>
+          disabled={disabled}
+          tooltip={triggerTooltip}
+          side="bottom"
+        >
+          {selectedOption ? getDisplayValue(selectedOption) : placeholder}
+          <ChevronsUpDown className="opacity-50" size={10} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className={cn('p-0', className)} onCloseAutoFocus={(e) => e.preventDefault()}>
+        <Command shouldFilter={false}>
+          <div className="relative w-full border-b">
+            <CommandInput
+              placeholder={`Search ${label.toLowerCase()}...`}
+              value={searchTerm}
+              onValueChange={(value) => {
+                setSearchTerm(value)
+              }}
+              className={searchInputClassName}
+            />
+            {loading && options.length > 0 && (
+              <div className="absolute top-1/2 right-2 flex -translate-y-1/2 transform items-center">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            )}
+          </div>
+          <CommandList>
+            {error && <div className="text-destructive p-4 text-center">{error}</div>}
+            {loading && options.length === 0 && (loadingSkeleton || <DefaultLoadingSkeleton />)}
+            {!loading &&
+              !error &&
+              options.length === 0 &&
+              (notFound || (
+                <CommandEmpty>
+                  {noResultsMessage ?? `No ${label.toLowerCase()} found.`}
+                </CommandEmpty>
+              ))}
+            <CommandGroup>
+              {options.map((option) => (
                 <CommandItem
                   key={getOptionValue(option)}
                   value={getOptionValue(option)}
                   onSelect={handleSelect}
-                  onMouseEnter={() => handleFocus(getOptionValue(option))}
+                  className="truncate"
                 >
                   {renderOption(option)}
+                  <Check
+                    className={cn(
+                      'ml-auto h-3 w-3',
+                      selectedValue === getOptionValue(option) ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
                 </CommandItem>
-                {idx !== options.length - 1 && <div className="bg-foreground/10 h-[1px]" />}
-              </>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </Command>
-    </div>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
